@@ -1,5 +1,6 @@
 [package]
 name = "reqray"
+description = "Log 'request x-rays' for rust programs instrumented with `tracing`."
 version = "0.1.0"
 authors = ["Peter Kolloch <info@eigenvalue.net>"]
 edition = "2018"
