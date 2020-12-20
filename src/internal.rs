@@ -270,7 +270,7 @@ where
                 .remove::<CallPathPool>()
                 .expect("no pool in root Span");
 
-            self.collector.process_finished_call(pool);
+            self.processor.process_finished_call(pool);
         }
     }
 }
@@ -282,9 +282,7 @@ pub(crate) mod test {
         time::Duration,
     };
 
-    use futures::{
-        channel::mpsc::{channel, Receiver, Sender},
-    };
+    use futures::channel::mpsc::{channel, Receiver, Sender};
     use quanta::{Clock, Mock};
     use tracing::dispatcher;
 

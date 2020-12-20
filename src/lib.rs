@@ -27,21 +27,20 @@ pub struct CallTreeCollector<H: FinishedCallTreeProcessor + 'static> {
     clock: Clock,
     /// Ignore calls beyond this depth.
     max_call_depth: usize,
-    collector: H,
+    processor: H,
 }
 
 impl Default for CallTreeCollector<LoggingCallTreeCollector> {
     fn default() -> Self {
         CallTreeCollectorBuilder::default()
-            .build_with_collector(
-                LoggingCallTreeCollectorBuilder::default().build())
+            .build_with_collector(LoggingCallTreeCollectorBuilder::default().build())
     }
 }
 
 /// Configure & Build [CallTreeCollector]s.
 pub struct CallTreeCollectorBuilder {
     clock: Option<Clock>,
-    max_call_depth: usize
+    max_call_depth: usize,
 }
 
 impl Default for CallTreeCollectorBuilder {
@@ -72,13 +71,14 @@ impl CallTreeCollectorBuilder {
 
     /// Build the [CallTreeCollector] handing over the finished call trees
     /// to `collector`.
-    pub fn build_with_collector<H>(self, collector: H) -> CallTreeCollector<H>
-        where H: FinishedCallTreeProcessor + 'static
+    pub fn build_with_collector<H>(self, processor: H) -> CallTreeCollector<H>
+    where
+        H: FinishedCallTreeProcessor + 'static,
     {
         CallTreeCollector {
             clock: self.clock.unwrap_or_else(|| Clock::new()),
             max_call_depth: core::cmp::max(2, self.max_call_depth),
-            collector,
+            processor,
         }
     }
 }

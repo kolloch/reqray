@@ -154,9 +154,7 @@ mod test {
 
     use quanta::Mock;
 
-    use crate::{
-        internal::test::{collect_call_trees, compound_call, cooking_party, one_ns},
-    };
+    use crate::internal::test::{collect_call_trees, compound_call, cooking_party, one_ns};
 
     #[test]
     fn display_one_ns() {
@@ -217,7 +215,6 @@ mod test {
             str
         );
     }
-
 
     pub fn display_call_trees(call: impl Fn(Arc<Mock>) -> ()) -> String {
         use std::fmt::Write;
