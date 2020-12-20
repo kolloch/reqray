@@ -2,6 +2,7 @@
 
 [![Build Status](https://travis-ci.com/kolloch/reqray.svg)](https://travis-ci.com/kolloch/reqray)
 [![Crate](https://img.shields.io/crates/v/reqray.svg)](https://crates.io/crates/reqray)
+[![Docs](https://docs.rs/reqray/badge.svg)](https://docs.rs/reqray)
 
 Log "request x-rays" for rust programs instrumented with [tracing](https://github.com/tokio-rs/tracing). This
 includes aggregated wall/own times as frequently found in flame graphs in a human-friendly text format.
