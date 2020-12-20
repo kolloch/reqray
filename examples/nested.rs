@@ -1,16 +1,24 @@
-use reqray::CallTreeCollector;
-use tracing_subscriber::{EnvFilter, util::SubscriberInitExt, fmt, prelude::*};
+use reqray::{
+    display::LoggingCallTreeCollectorBuilder, CallTreeCollector, CallTreeCollectorBuilder,
+};
+use tracing_subscriber::{fmt, prelude::*, util::SubscriberInitExt, EnvFilter};
 
 fn main() {
-
-    let fmt_layer = fmt::layer()
-        .with_target(false);
+    let fmt_layer = fmt::layer().with_target(false);
     let filter_layer = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("info"))
         .unwrap();
 
+    let call_tree_collector = CallTreeCollectorBuilder::default()
+        .max_call_depth(10)
+        .build_with_collector(
+            LoggingCallTreeCollectorBuilder::default()
+                .left_margin(20)
+                .build(),
+        );
+
     tracing_subscriber::registry()
-        .with(CallTreeCollector::default())
+        .with(call_tree_collector)
         .with(filter_layer)
         .with(fmt_layer)
         .init();
@@ -23,9 +31,7 @@ fn main() {
     }
 
     #[instrument]
-    fn random() {
-
-    }
+    fn random() {}
 
     #[instrument]
     fn nested() {
