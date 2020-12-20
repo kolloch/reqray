@@ -1,3 +1,45 @@
+//! Log "request x-rays" for rust programs instrumented with [tracing](https://github.com/tokio-rs/tracing). This
+//! includes aggregated wall/own times as frequently found in flame graphs in a human-friendly text format.
+//!
+//! Let's assume that you already have an explicit setup for `tracing` like this, then you simply
+//! need to add the highlighted line:
+//!
+//! ```rust
+//!     use reqray::CallTreeCollector;
+//!     use tracing_subscriber::{EnvFilter, util::SubscriberInitExt, fmt, prelude::*};
+//!
+//!     let fmt_layer = fmt::layer()
+//!         .with_target(false);
+//!     let filter_layer = EnvFilter::try_from_default_env()
+//!         .or_else(|_| EnvFilter::try_new("info"))
+//!         .unwrap();
+//!
+//!     tracing_subscriber::registry()
+//!     // -----------------------------------------------
+//!         .with(CallTreeCollector::default())
+//!     // -----------------------------------------------
+//!         .with(filter_layer)
+//!         .with(fmt_layer)
+//!         .init();
+//! ```
+//!
+//! Instead of `CallTreeCollector::default()` you can chose a more explicit config:
+//!
+//! ```rust
+//!     // ...
+//!     let call_tree_collector = CallTreeCollectorBuilder::default()
+//!         .max_call_depth(10)
+//!         .build_with_collector(
+//!             LoggingCallTreeCollectorBuilder::default()
+//!                 .left_margin(20)
+//!                 .build(),
+//!         );
+//!
+//!     tracing_subscriber::registry()
+//!         .with(call_tree_collector)
+//!         // ...
+//! ```
+
 pub mod display;
 mod internal;
 
@@ -8,7 +50,8 @@ use quanta::Clock;
 // display model to use the public interface.
 pub use internal::{CallPathPool, CallPathPoolId, CallPathTiming};
 
-/// A [CallTreeProcessor] can act on the finished call tree.
+/// A [FinishedCallTreeProcessor] uses the aggregated call tree for
+/// something useful.
 ///
 /// Expected use cases:
 ///
@@ -20,7 +63,7 @@ pub trait FinishedCallTreeProcessor {
     fn process_finished_call(&self, pool: CallPathPool);
 }
 
-/// A [tracing_subscriber::Subscriber] which collects call trees
+/// A [tracing::Subscriber] which collects call trees
 /// and hands finished trees to a [FinishedCallTreeProcessor].
 pub struct CallTreeCollector<H: FinishedCallTreeProcessor + 'static> {
     /// The clock to use for determing call timings.
