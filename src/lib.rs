@@ -4,7 +4,7 @@
 //! Let's assume that you already have an explicit setup for `tracing` like this, then you simply
 //! need to add the highlighted line:
 //!
-//! ```rust
+//! ```
 //!     use reqray::CallTreeCollector;
 //!     use tracing_subscriber::{EnvFilter, util::SubscriberInitExt, fmt, prelude::*};
 //!
@@ -25,19 +25,29 @@
 //!
 //! Instead of `CallTreeCollector::default()` you can chose a more explicit config:
 //!
-//! ```rust
-//!     // ...
-//!     let call_tree_collector = CallTreeCollectorBuilder::default()
-//!         .max_call_depth(10)
-//!         .build_with_collector(
-//!             LoggingCallTreeCollectorBuilder::default()
-//!                 .left_margin(20)
-//!                 .build(),
-//!         );
+//! ```
+//! use reqray::{CallTreeCollectorBuilder, display::LoggingCallTreeCollectorBuilder};
+//! use tracing_subscriber::{EnvFilter, util::SubscriberInitExt, fmt, prelude::*};
 //!
-//!     tracing_subscriber::registry()
-//!         .with(call_tree_collector)
-//!         // ...
+//! # let fmt_layer = fmt::layer().with_target(false);
+//! # let filter_layer = EnvFilter::try_from_default_env()
+//! #   .or_else(|_| EnvFilter::try_new("info"))
+//! #   .unwrap();
+//! // ...
+//! let call_tree_collector = CallTreeCollectorBuilder::default()
+//!     .max_call_depth(10)
+//!     .build_with_collector(
+//!         LoggingCallTreeCollectorBuilder::default()
+//!             .left_margin(20)
+//!             .build(),
+//!     );
+//!
+//! tracing_subscriber::registry()
+//!     .with(call_tree_collector)
+//!     // ...
+//! #    .with(filter_layer)
+//! #    .with(fmt_layer)
+//! #    .init();
 //! ```
 
 pub mod display;

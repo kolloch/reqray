@@ -1,6 +1,4 @@
-use reqray::{
-    display::LoggingCallTreeCollectorBuilder, CallTreeCollector, CallTreeCollectorBuilder,
-};
+use reqray::{display::LoggingCallTreeCollectorBuilder, CallTreeCollectorBuilder};
 use tracing_subscriber::{fmt, prelude::*, util::SubscriberInitExt, EnvFilter};
 
 fn main() {

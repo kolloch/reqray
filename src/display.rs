@@ -189,6 +189,8 @@ mod test {
         );
     }
 
+    // TODO: Make this deterministic.
+    #[ignore]
     #[test]
     fn display_with_futures() {
         let str = display_call_trees(|mock| {
