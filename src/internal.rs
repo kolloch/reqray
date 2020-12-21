@@ -484,21 +484,22 @@ pub(crate) mod test {
         use tracing_subscriber::prelude::*;
 
         let call_trees = FinishedCallTreeStore::default();
-        let (clock, mock) = Clock::mock();
-        let call_tree_collector = CallTreeCollectorBuilder::default()
-            .clock(clock)
-            .build_with_collector(call_trees.clone());
-
-        let fmt_layer = fmt::layer()
-            .with_thread_ids(true)
-            .without_time()
-            .with_target(false);
-        let subscriber = tracing_subscriber::registry()
-            .with(call_tree_collector)
-            .with(fmt_layer);
-        tracing::subscriber::with_default(subscriber, || {
-            call(mock);
-        });
+        {
+            let (clock, mock) = Clock::mock();
+            let call_tree_collector = CallTreeCollectorBuilder::default()
+                .clock(clock)
+                .build_with_collector(call_trees.clone());
+            let fmt_layer = fmt::layer()
+                .with_thread_ids(true)
+                .without_time()
+                .with_target(false);
+            let subscriber = tracing_subscriber::registry()
+                .with(call_tree_collector)
+                .with(fmt_layer);
+            tracing::subscriber::with_default(subscriber, || {
+                call(mock);
+            });
+        }
         call_trees.to_vec()
     }
 
@@ -509,8 +510,16 @@ pub(crate) mod test {
 
     impl FinishedCallTreeStore {
         pub fn to_vec(self) -> Vec<CallPathPool> {
-            Arc::try_unwrap(self.store)
-                .unwrap()
+            let mut arc = self.store;
+            // Really not sure why we have some asynchronous use here.
+            let store = loop {
+                match Arc::try_unwrap(arc) {
+                    Ok(store) => break store,
+                    Err(a) => arc = a,
+                }
+            };
+
+            store
                 .into_inner()
                 .unwrap()
                 .into()
