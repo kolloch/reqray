@@ -1,5 +1,5 @@
 use std::{collections::HashMap, fmt, time::Duration};
-use tracing::{span::Attributes, Id, Subscriber};
+use tracing::{Id, Subscriber, span::Attributes};
 use tracing_subscriber::{
     layer::Context,
     registry::{ExtensionsMut, LookupSpan},
@@ -10,9 +10,12 @@ use std::ops::{Index, IndexMut};
 
 use tracing::{callsite, Metadata};
 
+/// Use a [CallPathPoolId] to index a [CallPathTiming] in a [CallPathPool].
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct CallPathPoolId(usize);
 
+/// A [CallPathPool] contains all [CallPathTiming]s of a call tree
+/// indexed by [CallPathPoolId]s.
 #[derive(Debug)]
 pub struct CallPathPool {
     pool: Vec<CallPathTiming>,
@@ -86,6 +89,10 @@ impl CallPathTiming {
     }
 }
 
+/// The span specific information.
+///
+/// The sums are folded into the referenced [CallPathTiming] when
+/// the span is closed.
 #[derive(Debug, Clone)]
 struct SpanTimingInfo {
     call_path_idx: CallPathPoolId,
@@ -95,13 +102,25 @@ struct SpanTimingInfo {
     sum_own: Duration,
 }
 
+impl SpanTimingInfo {
+    fn for_call_path_idx(call_path_idx: CallPathPoolId) -> SpanTimingInfo {
+        SpanTimingInfo {
+            call_path_idx,
+            last_enter: 0,
+            sum_with_children: Duration::default(),
+            last_enter_own: 0,
+            sum_own: Duration::default(),
+        }
+    }
+}
+
 // Implementation idea:
 //
-// Each Span has a SpanTimingInfo. In parallel, we build
-// an aggregated hierarchy for every call path of CallPathTiming.
-// We have a pool of CallPathTimings at the root span.
+// Each Span has a [SpanTimingInfo]. In parallel, we build
+// an aggregated hierarchy for every call path of [CallPathTiming].
+// We have a [CallPathPool] owning all [CallPathTiming]s at the root span.
 // Whenever a Span is closed, we fold its aggregation values in
-// the corresponding CallPathTiming.
+// the corresponding [CallPathTiming].
 //
 // This way, when entering/leaving a span, we only touch the
 // span specific data without fancy lookups. This is important
@@ -113,8 +132,7 @@ where
 {
     fn new_span(&self, _attrs: &Attributes, id: &Id, ctx: Context<S>) {
         let span = ctx.span(id).expect("no span in new_span");
-        let mut extensions: ExtensionsMut = span.extensions_mut();
-        let call_path_idx = match span.parent() {
+        match span.parent() {
             None => {
                 // root
                 let pool = vec![CallPathTiming {
@@ -126,8 +144,9 @@ where
                     sum_with_children: Duration::default(),
                     sum_own: Duration::default(),
                 }];
+                let mut extensions: ExtensionsMut = span.extensions_mut();
                 extensions.insert(CallPathPool { pool });
-                CallPathPoolId(0)
+                extensions.insert(SpanTimingInfo::for_call_path_idx(CallPathPoolId(0)));
             }
             Some(parent) => {
                 let mut parent_extensions = parent.extensions_mut();
@@ -144,12 +163,14 @@ where
                     .from_root()
                     .next()
                     .expect("span has a parent but no root");
-                let mut extensions: ExtensionsMut = if root.id() == parent.id() {
+                let mut root_extensions: ExtensionsMut = if root.id() == parent.id() {
                     parent_extensions
                 } else {
+                    // Do not keep multiple extensions locked at the same time.
+                    std::mem::drop(parent_extensions);
                     root.extensions_mut()
                 };
-                let pool: &mut CallPathPool = extensions.get_mut::<CallPathPool>().unwrap();
+                let pool: &mut CallPathPool = root_extensions.get_mut::<CallPathPool>().unwrap();
                 let new_idx = CallPathPoolId(pool.pool.len());
                 let parent_call_path_timing = &mut pool[parent_call_path_idx];
                 let new_depth = parent_call_path_timing.depth + 1;
@@ -159,7 +180,7 @@ where
                 let idx = parent_call_path_timing
                     .children
                     .get(&span.metadata().callsite());
-                match idx {
+                let call_path_idx = match idx {
                     Some(idx) => *idx,
                     None => {
                         parent_call_path_timing
@@ -176,30 +197,19 @@ where
                         });
                         new_idx
                     }
-                }
+                };
+                // Do not keep multiple extensions locked at the same time.
+                std::mem::drop(root_extensions);
+                let mut extensions: ExtensionsMut = span.extensions_mut();
+                extensions.insert(SpanTimingInfo::for_call_path_idx(call_path_idx));
             }
         };
-
-        extensions.insert(SpanTimingInfo {
-            call_path_idx,
-            last_enter: 0,
-            sum_with_children: Duration::default(),
-            last_enter_own: 0,
-            sum_own: Duration::default(),
-        });
     }
 
     fn on_enter(&self, _id: &tracing::Id, ctx: Context<S>) {
         let leave_parent = self.clock.end();
 
         let span = ctx.lookup_current().expect("no span in new_span");
-
-        let mut extensions = span.extensions_mut();
-        let timing_info = extensions.get_mut::<SpanTimingInfo>();
-        if timing_info.is_none() {
-            return;
-        }
-        let timing_info = timing_info.unwrap();
 
         if let Some(parent) = span.parent() {
             let mut extensions = parent.extensions_mut();
@@ -209,9 +219,12 @@ where
             timing_info.sum_own += self.clock.delta(timing_info.last_enter_own, leave_parent);
         }
 
-        let start = self.clock.start();
-        timing_info.last_enter = start;
-        timing_info.last_enter_own = start;
+        let mut extensions = span.extensions_mut();
+        if let Some(timing_info)  = extensions.get_mut::<SpanTimingInfo>() {
+            let start = self.clock.start();
+            timing_info.last_enter = start;
+            timing_info.last_enter_own = start;
+        }
     }
 
     fn on_exit(&self, id: &tracing::Id, ctx: Context<'_, S>) {
@@ -227,6 +240,8 @@ where
         timing_info.sum_with_children += duration;
         let duration = self.clock.delta(timing_info.last_enter_own, end);
         timing_info.sum_own += duration;
+        // Make sure that we do not hold two extension locks at once.
+        std::mem::drop(extensions);
 
         if let Some(parent) = span.parent() {
             let mut extensions = parent.extensions_mut();
@@ -247,15 +262,16 @@ where
         }
         let timing_info = timing_info.unwrap();
         let root_extensions_opt = span.from_root().next();
-        let mut root_extensions: ExtensionsMut;
-        match root_extensions_opt.as_ref() {
+        let mut root_extensions: ExtensionsMut = match root_extensions_opt.as_ref() {
             Some(re) => {
-                root_extensions = re.extensions_mut();
+                // Make sure that we do not hold two extension locks at once.
+                std::mem::drop(extensions);
+                re.extensions_mut()
             }
             None => {
-                root_extensions = extensions;
+                extensions
             }
-        }
+        };
 
         let pool: &mut CallPathPool = root_extensions
             .get_mut::<CallPathPool>()
