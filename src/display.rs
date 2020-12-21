@@ -228,8 +228,9 @@ mod test {
     #[test]
     fn display_with_futures() {
         let str = display_call_trees(|mock| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
+            // let rt = tokio::runtime::Runtime::new().unwrap();
+            // rt.block_on(async {
+            async_std::task::block_on(async {
                 cooking_party(mock).await;
             });
         });
@@ -239,7 +240,7 @@ mod test {
         let pattern = indoc::indoc! {r#"
                 # calls │    ∑ wall ms │     ∑ own ms │ span tree
             ────────────┼──────────────┼──────────────┼───────────────────────
-                  0 001 ┊      111.XXX ┊      111.XXX ┊ ┬ cooking_party
+                  0 001 ┊      101.XXX ┊      101.XXX ┊ ┬ cooking_party
                   0 001 ┊        0.03X ┊        0.03X ┊ ├─ cook_three
                   0 001 ┊        0.0X3 ┊        0.0X3 ┊ ╰─ eat_three
 

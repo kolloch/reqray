@@ -447,10 +447,10 @@ pub(crate) mod test {
         // to enforce a deterministic order.
         let (sender, receiver) = channel(0);
         use tracing_futures::WithSubscriber;
-        info!("increment 1_000_000");
+        info!("CP increment 1_000_000");
         mock.increment(1_000_000);
 
-        let handle = tokio::spawn({
+        let handle = async_std::task::spawn({
             let mock = mock.clone();
             async {
                 eat_three(mock, receiver).await;
@@ -458,21 +458,19 @@ pub(crate) mod test {
             .in_current_span()
             .with_current_subscriber()
         });
-
-        info!("increment 10_000_000");
-        mock.increment(10_000_000);
         cook_three(mock.clone(), sender).await;
 
-        handle.await.unwrap();
-        info!("increment 100_000_000");
+        handle.await;
+        info!("CP increment 100_000_000");
         mock.increment(100_000_000);
     }
 
     #[test]
     fn test_with_futures() {
         let call_tree = collect_call_trees(|mock| {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(async {
+            // let rt = tokio::runtime::Runtime::new().unwrap();
+            // rt.block_on(async {
+            async_std::task::block_on(async {
                 cooking_party(mock).await;
             });
         });
