@@ -116,11 +116,7 @@ impl SpanTimingInfo {
             call_path_idx,
             sum_with_children: Duration::default(),
             sum_own: Duration::default(),
-            per_thread: {
-                let mut map = HashMap::with_capacity(1);
-                map.insert(std::thread::current().id(), PerThreadInfo::default());
-                map
-            }
+            per_thread: HashMap::new(),
         }
     }
 }
@@ -233,8 +229,8 @@ where
 
         let mut extensions = span.extensions_mut();
         if let Some(timing_info)  = extensions.get_mut::<SpanTimingInfo>() {
-            let start = self.clock.start();
             let mut per_thread = timing_info.per_thread.entry(std::thread::current().id()).or_default();
+            let start = self.clock.start();
             per_thread.last_enter = start;
             per_thread.last_enter_own = start;
         }
@@ -255,6 +251,12 @@ where
         timing_info.sum_with_children += wall_duration;
         let own_duration = self.clock.delta(per_thread.last_enter_own, end);
         timing_info.sum_own += own_duration;
+
+        // It is likely that we will be entered by the same thread again,
+        // but we do not want to bloat memory if we are constantly entered
+        // in different threads.
+        timing_info.per_thread.remove(&std::thread::current().id());
+
         // Make sure that we do not hold two extension locks at once.
         std::mem::drop(extensions);
 

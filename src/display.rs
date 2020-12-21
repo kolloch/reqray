@@ -198,6 +198,8 @@ mod test {
             });
         });
 
+        // The clock increments from other threads can leak over, unfortunately.
+        // Therefore, we use XXXs for the non-deterministic values.
         let pattern = indoc::indoc! {r#"
                 # calls │    ∑ wall ms │     ∑ own ms │ span tree
             ────────────┼──────────────┼──────────────┼───────────────────────
