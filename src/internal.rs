@@ -216,6 +216,23 @@ where
     fn on_enter(&self, _id: &tracing::Id, ctx: Context<S>) {
         let leave_parent = self.clock.end();
         let span = ctx.lookup_current().expect("no span in new_span");
+        if span.extensions().get::<SpanTimingInfo>().is_none() {
+            // yes, this is an extra check but:
+            // * it has to occur before we check for the parent
+            // * taking the "start" clock value below should be one of the last
+            //   operations
+            return
+        }
+
+        if let Some(parent) = span.parent() {
+            let mut extensions = parent.extensions_mut();
+            if let Some(timing_info) = extensions.get_mut::<SpanTimingInfo>() {
+                let last_enter_own =
+                    timing_info.per_thread[&std::thread::current().id()].last_enter_own;
+                let delta = self.clock.delta(last_enter_own, leave_parent);
+                timing_info.sum_own += delta;
+            }
+        }
 
         let mut extensions = span.extensions_mut();
         if let Some(timing_info) = extensions.get_mut::<SpanTimingInfo>() {
@@ -226,21 +243,6 @@ where
             let start = self.clock.start();
             per_thread.last_enter = start;
             per_thread.last_enter_own = start;
-        } else {
-            // completely ignore, do not update parent
-            return
-        }
-        // do not lock multiple extensions at once
-        std::mem::drop(extensions);
-
-        if let Some(parent) = span.parent() {
-            let mut extensions = parent.extensions_mut();
-            if let Some(timing_info) = extensions.get_mut::<SpanTimingInfo>() {
-                let last_enter_own =
-                    timing_info.per_thread[&std::thread::current().id()].last_enter_own;
-                let delta = self.clock.delta(last_enter_own, leave_parent);
-                timing_info.sum_own += delta;
-            }
         }
     }
 
