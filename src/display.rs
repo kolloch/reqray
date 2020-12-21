@@ -189,6 +189,42 @@ mod test {
         );
     }
 
+    #[tracing::instrument]
+    fn nest_deeply(mock: &Mock, nest: usize) {
+        if nest == 0 {
+            return;
+        }
+
+        mock.increment(1_000);
+        nest_deeply(mock, nest - 1);
+        mock.increment(1_000_000);
+    }
+
+    #[test]
+    fn display_nest_deeply() {
+        let str = display_call_trees(|mock| nest_deeply(&mock, 11));
+        assert_eq!(
+            &str,
+            indoc::indoc! {r#"
+                    # calls │    ∑ wall ms │     ∑ own ms │ span tree
+                ────────────┼──────────────┼──────────────┼───────────────────────
+                      0 001 ┊       11.011 ┊        1.001 ┊ ┬ nest_deeply
+                      0 001 ┊       10.010 ┊        1.001 ┊ ╰┬ nest_deeply
+                      0 001 ┊        9.009 ┊        1.001 ┊  ╰┬ nest_deeply
+                      0 001 ┊        8.008 ┊        1.001 ┊   ╰┬ nest_deeply
+                      0 001 ┊        7.007 ┊        1.001 ┊    ╰┬ nest_deeply
+                      0 001 ┊        6.006 ┊        1.001 ┊     ╰┬ nest_deeply
+                      0 001 ┊        5.005 ┊        1.001 ┊      ╰┬ nest_deeply
+                      0 001 ┊        4.004 ┊        1.001 ┊       ╰┬ nest_deeply
+                      0 001 ┊        3.003 ┊        1.001 ┊        ╰┬ nest_deeply
+                      0 001 ┊        2.002 ┊        2.002 ┊         ╰─ nest_deeply
+
+            "#},
+            "got:\n{}",
+            str
+        );
+    }
+
     #[test]
     fn display_with_futures() {
         let str = display_call_trees(|mock| {
