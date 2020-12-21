@@ -189,8 +189,6 @@ mod test {
         );
     }
 
-    // TODO: Make this deterministic.
-    #[ignore]
     #[test]
     fn display_with_futures() {
         let str = display_call_trees(|mock| {
@@ -200,25 +198,29 @@ mod test {
             });
         });
 
-        assert_eq!(
-            &str,
-            indoc::indoc! {r#"
+        let pattern = indoc::indoc! {r#"
                 # calls │    ∑ wall ms │     ∑ own ms │ span tree
             ────────────┼──────────────┼──────────────┼───────────────────────
-                  0 001 ┊        0.000 ┊        0.000 ┊ ─ eat_three
+                  0 001 ┊      111.XXX ┊      111.XXX ┊ ┬ cooking_party
+                  0 001 ┊        0.03X ┊        0.03X ┊ ├─ cook_three
+                  0 001 ┊        0.0X3 ┊        0.0X3 ┊ ╰─ eat_three
 
-                # calls │    ∑ wall ms │     ∑ own ms │ span tree
-            ────────────┼──────────────┼──────────────┼───────────────────────
-                  0 001 ┊        0.333 ┊        0.300 ┊ ┬ cooking_party
-                  0 001 ┊        0.033 ┊        0.033 ┊ ╰─ cook_three
+        "#};
 
-            "#},
-            "got:\n{}",
-            str
-        );
+        pattern_matches(pattern, &str);
     }
 
-    pub fn display_call_trees(call: impl Fn(Arc<Mock>) -> ()) -> String {
+    fn pattern_matches(pattern: &str, actual: &str) {
+        assert_eq!(pattern.len(), actual.len(), "unexpected length:\n{}", actual);
+
+        for (p,a) in pattern.chars().zip(actual.chars()) {
+            if p != 'X' && p != a {
+                assert_eq!(actual, pattern);
+            }
+        }
+    }
+
+    fn display_call_trees(call: impl Fn(Arc<Mock>) -> ()) -> String {
         use std::fmt::Write;
 
         let call_trees = collect_call_trees(call);

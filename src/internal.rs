@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, time::Duration};
+use std::{collections::HashMap, fmt, thread::ThreadId, time::Duration};
 use tracing::{Id, Subscriber, span::Attributes};
 use tracing_subscriber::{
     layer::Context,
@@ -96,20 +96,31 @@ impl CallPathTiming {
 #[derive(Debug, Clone)]
 struct SpanTimingInfo {
     call_path_idx: CallPathPoolId,
-    last_enter: u64,
     sum_with_children: Duration,
-    last_enter_own: u64,
     sum_own: Duration,
+    /// Per thread info. We always access SpanTimingInfo in a thread-safe way
+    /// but we still need to keep some info per-thread:
+    /// While not typical, the same span can be entered multiple times from multiple threads.
+    per_thread: HashMap<ThreadId, PerThreadInfo>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct PerThreadInfo {
+    last_enter: u64,
+    last_enter_own: u64,
 }
 
 impl SpanTimingInfo {
     fn for_call_path_idx(call_path_idx: CallPathPoolId) -> SpanTimingInfo {
         SpanTimingInfo {
             call_path_idx,
-            last_enter: 0,
             sum_with_children: Duration::default(),
-            last_enter_own: 0,
             sum_own: Duration::default(),
+            per_thread: {
+                let mut map = HashMap::with_capacity(1);
+                map.insert(std::thread::current().id(), PerThreadInfo::default());
+                map
+            }
         }
     }
 }
@@ -208,7 +219,6 @@ where
 
     fn on_enter(&self, _id: &tracing::Id, ctx: Context<S>) {
         let leave_parent = self.clock.end();
-
         let span = ctx.lookup_current().expect("no span in new_span");
 
         if let Some(parent) = span.parent() {
@@ -216,30 +226,35 @@ where
             let timing_info = extensions
                 .get_mut::<SpanTimingInfo>()
                 .expect("parent has no SpanTimingInfo");
-            timing_info.sum_own += self.clock.delta(timing_info.last_enter_own, leave_parent);
+            let last_enter_own = timing_info.per_thread[&std::thread::current().id()].last_enter_own;
+            let delta = self.clock.delta(last_enter_own, leave_parent);
+            timing_info.sum_own += delta;
         }
 
         let mut extensions = span.extensions_mut();
         if let Some(timing_info)  = extensions.get_mut::<SpanTimingInfo>() {
             let start = self.clock.start();
-            timing_info.last_enter = start;
-            timing_info.last_enter_own = start;
+            let mut per_thread = timing_info.per_thread.entry(std::thread::current().id()).or_default();
+            per_thread.last_enter = start;
+            per_thread.last_enter_own = start;
         }
     }
 
     fn on_exit(&self, id: &tracing::Id, ctx: Context<'_, S>) {
         let end = self.clock.end();
         let span = ctx.span(id).unwrap();
+
         let mut extensions = span.extensions_mut();
         let timing_info = extensions.get_mut::<SpanTimingInfo>();
         if timing_info.is_none() {
             return;
         }
         let timing_info = timing_info.unwrap();
-        let duration = self.clock.delta(timing_info.last_enter, end);
-        timing_info.sum_with_children += duration;
-        let duration = self.clock.delta(timing_info.last_enter_own, end);
-        timing_info.sum_own += duration;
+        let per_thread = &timing_info.per_thread[&std::thread::current().id()];
+        let wall_duration = self.clock.delta(per_thread.last_enter, end);
+        timing_info.sum_with_children += wall_duration;
+        let own_duration = self.clock.delta(per_thread.last_enter_own, end);
+        timing_info.sum_own += own_duration;
         // Make sure that we do not hold two extension locks at once.
         std::mem::drop(extensions);
 
@@ -249,7 +264,9 @@ where
                 .get_mut::<SpanTimingInfo>()
                 .expect("parent has no SpanTimingInfo");
             let enter_own = self.clock.start();
-            timing_info.last_enter_own = enter_own;
+            timing_info.per_thread.entry(std::thread::current().id()).and_modify(|per_thread| {
+                per_thread.last_enter_own = enter_own;
+            });
         }
     }
 
@@ -300,7 +317,8 @@ pub(crate) mod test {
 
     use futures::channel::mpsc::{channel, Receiver, Sender};
     use quanta::{Clock, Mock};
-    use tracing::dispatcher;
+    use tracing::{Instrument, info};
+    use tracing_subscriber::fmt;
 
     use crate::{CallPathPool, CallTreeCollectorBuilder, FinishedCallTreeProcessor};
 
@@ -392,47 +410,49 @@ pub(crate) mod test {
         assert_eq!(nested_call.sum_without_children(), Duration::from_nanos(3));
     }
 
-    #[tracing::instrument]
+    #[tracing::instrument(skip(mock,receiver))]
     pub async fn eat_three(mock: Arc<Mock>, mut receiver: Receiver<usize>) {
         use futures::StreamExt;
         for _ in 0..3 {
             let _next = receiver.next().await.unwrap();
-            mock.increment(100);
+            info!("increment 1_000");
+            mock.increment(1_000);
         }
     }
 
-    #[tracing::instrument]
+    #[tracing::instrument(skip(mock,sender))]
     pub async fn cook_three(mock: Arc<Mock>, mut sender: Sender<usize>) {
         use futures::SinkExt;
         for _ in 0..3 {
-            mock.increment(1_000);
-            sender.send(0).await.unwrap();
+            info!("increment 10_000");
             mock.increment(10_000);
+            sender.send(0).await.unwrap();
         }
     }
 
-    #[tracing::instrument]
+    #[tracing::instrument(skip(mock))]
     pub async fn cooking_party(mock: Arc<Mock>) {
-        let subscriber = dispatcher::get_default(|default| default.clone());
-
         // Use "no" buffer (which means a buffer of one for each sender)
         // to enforce a deterministic order.
         let (sender, receiver) = channel(0);
         use tracing_futures::WithSubscriber;
-        mock.increment(100_000);
+        info!("increment 1_000_000");
+        mock.increment(1_000_000);
 
         let handle = tokio::spawn({
             let mock = mock.clone();
             async {
-                eat_three(mock, receiver).with_subscriber(subscriber).await;
-            }
+                eat_three(mock, receiver).await;
+            }.in_current_span().with_current_subscriber()
         });
 
-        mock.increment(100_000);
+        info!("increment 10_000_000");
+        mock.increment(10_000_000);
         cook_three(mock.clone(), sender).await;
-        mock.increment(100_000);
 
         handle.await.unwrap();
+        info!("increment 100_000_000");
+        mock.increment(100_000_000);
     }
 
     #[test]
@@ -455,7 +475,9 @@ pub(crate) mod test {
         let call_tree_collector = CallTreeCollectorBuilder::default()
             .clock(clock)
             .build_with_collector(call_trees.clone());
-        let subscriber = tracing_subscriber::registry().with(call_tree_collector);
+
+        let fmt_layer = fmt::layer().with_thread_ids(true).without_time().with_target(false);
+        let subscriber = tracing_subscriber::registry().with(call_tree_collector).with(fmt_layer);
         tracing::subscriber::with_default(subscriber, || {
             call(mock);
         });
