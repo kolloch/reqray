@@ -1,2 +1,6 @@
 /target
 .vscode
+flame*.svg
+perf.*
+with_calltree.txt
+without_calltree.txt
