@@ -86,6 +86,23 @@ Instead of `CallTreeCollector::default()` you can chose a more explicit config:
         // ...
 ```
 
+## Overhead
+
+I did basic performance testing (see benches) to check for obvious gotchas
+-- I didn't spot any. If your code actually does talk to a database
+or anything expensive, it should be in the same order of magnitude as logging
+overhead with the tracing library in general.
+
+In my totally unrepresentative example with some log statements which does
+nothing else really, the logging overhead increased by 30-50% -- this is roughly
+the amount of actual log lines added to the log output in this case.
+
+Generally, you should only instrument relevant calls in your program not every
+one of them, especially not those in a CPU-bound loop. If you have those,
+it might make sense to filter those before the CallTreeCollector is invoked.
+
+I am very curious to hear actual stats in real life programs!
+
 ## Inspiration
 
 When working together with Klas Kalass, he created something similar for Java:
@@ -108,8 +125,12 @@ Thank you, Eliza!
 
 ## Contributions
 
+Giving feedback or saying thanks on [Twitter](https://twitter.com/pkolloch) or
+on the tracing discord channel is appreciated.
+
 Contributions in the form of documentation and bug fixes are highly welcome.
-Please start a discussion with me before working on larger features.
+Please start a discussion with me (e.g. via an issue) before working on larger
+features.
 
 I'd really appreciate tests for all new features. Please run `cargo test`
 before submitting a pull request. Just use `cargo fmt` for formatting.

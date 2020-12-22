@@ -1,8 +1,8 @@
-use std::fs::File;
+use std::{fs::File, sync::{Arc, Mutex}};
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use quanta::Mock;
-use reqray::CallTreeCollector;
+use reqray::{CallTreeCollector, CallTreeCollectorBuilder, FinishedCallTreeProcessor};
 
 use tracing::info;
 use tracing_subscriber::fmt;
@@ -20,7 +20,9 @@ fn compound_call(mock: &Mock) {
     one_ns(mock);
     mock.increment(100);
     one_ns(mock);
-    one_ns(mock);
+    for _ in 0..10 {
+      one_ns(mock);
+    }
     mock.increment(1000);
 }
 
@@ -30,7 +32,7 @@ pub fn sync_compound(c: &mut Criterion) {
         b.iter(|| compound_call(black_box(&mock)))
     });
     c.bench_function("log with layers", |b| {
-        let f = File::create("without_calltree.txt").unwrap();
+        let f = File::create("benches_without_calltree.txt").unwrap();
         let (non_blocking, _guard) = tracing_appender::non_blocking(f);
         let fmt_layer = fmt::layer()
             .with_thread_ids(true)
@@ -44,7 +46,7 @@ pub fn sync_compound(c: &mut Criterion) {
     });
     c.bench_function("log with call tree collector", |b| {
         let call_tree_collector = CallTreeCollector::default();
-        let f = File::create("with_calltree.txt").unwrap();
+        let f = File::create("benches_with_calltree.txt").unwrap();
         let (non_blocking, _guard) = tracing_appender::non_blocking(f);
         let fmt_layer = fmt::layer()
             .with_thread_ids(true)
@@ -58,6 +60,38 @@ pub fn sync_compound(c: &mut Criterion) {
             b.iter(|| compound_call(black_box(&mock)))
         });
     });
+
+    c.bench_function("log with silent call tree collector", |b| {
+        let counting = CountingCallTreeProcessor::default();
+        let call_tree_collector = CallTreeCollectorBuilder::default()
+          .build_with_collector(counting.clone());
+        let f = File::create("benches_with_silent_calltree.txt").unwrap();
+        let (non_blocking, _guard) = tracing_appender::non_blocking(f);
+        let fmt_layer = fmt::layer()
+            .with_thread_ids(true)
+            .without_time()
+            .with_target(false)
+            .with_writer(non_blocking);
+        let subscriber = tracing_subscriber::registry()
+            .with(call_tree_collector)
+            .with(fmt_layer);
+        tracing::subscriber::with_default(subscriber, || {
+            b.iter(|| compound_call(black_box(&mock)))
+        });
+        assert!(*counting.root_child_count.lock().unwrap() > 0);
+    });
+  }
+
+#[derive(Default, Clone)]
+struct CountingCallTreeProcessor {
+  root_child_count: Arc<Mutex<usize>>,
+}
+
+impl FinishedCallTreeProcessor for CountingCallTreeProcessor {
+    fn process_finished_call(&self, pool: reqray::CallPathPool) {
+        let mut locked = self.root_child_count.lock().unwrap();
+        *locked += pool.root().children().count();
+    }
 }
 
 criterion_group!(benches, sync_compound);

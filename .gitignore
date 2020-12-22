@@ -2,5 +2,4 @@
 .vscode
 flame*.svg
 perf.*
-with_calltree.txt
-without_calltree.txt
+benches_*.txt
