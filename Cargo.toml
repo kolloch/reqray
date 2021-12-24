@@ -20,9 +20,9 @@ indoc = "1.0"
 tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
 tracing-futures = { version = "0.2", features = ["tokio", "futures-03", "std-future"]}
 futures = "0.3"
-tokio = { version = "0.3", features = ["full"] }
+tokio = { version = "1.15.0", features = ["full"] }
 async-std = "1.8"
-tracing-appender = "0.1"
+tracing-appender = "0.2.0"
 
 [[bench]]
 name = "overhead"
