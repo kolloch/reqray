@@ -33,12 +33,11 @@ pub fn sync_compound(c: &mut Criterion) {
     });
     c.bench_function("log with layers", |b| {
         let f = File::create("benches_without_calltree.txt").unwrap();
-        let (non_blocking, _guard) = tracing_appender::non_blocking(f);
         let fmt_layer = fmt::layer()
             .with_thread_ids(true)
             .without_time()
             .with_target(false)
-            .with_writer(non_blocking);
+            .with_writer(f);
         let subscriber = tracing_subscriber::registry().with(fmt_layer);
         tracing::subscriber::with_default(subscriber, || {
             b.iter(|| compound_call(black_box(&mock)))
@@ -47,12 +46,11 @@ pub fn sync_compound(c: &mut Criterion) {
     c.bench_function("log with call tree collector", |b| {
         let call_tree_collector = CallTreeCollector::default();
         let f = File::create("benches_with_calltree.txt").unwrap();
-        let (non_blocking, _guard) = tracing_appender::non_blocking(f);
         let fmt_layer = fmt::layer()
             .with_thread_ids(true)
             .without_time()
             .with_target(false)
-            .with_writer(non_blocking);
+            .with_writer(f);
         let subscriber = tracing_subscriber::registry()
             .with(call_tree_collector)
             .with(fmt_layer);
@@ -66,12 +64,11 @@ pub fn sync_compound(c: &mut Criterion) {
         let call_tree_collector = CallTreeCollectorBuilder::default()
           .build_with_collector(counting.clone());
         let f = File::create("benches_with_silent_calltree.txt").unwrap();
-        let (non_blocking, _guard) = tracing_appender::non_blocking(f);
         let fmt_layer = fmt::layer()
             .with_thread_ids(true)
             .without_time()
             .with_target(false)
-            .with_writer(non_blocking);
+            .with_writer(f);
         let subscriber = tracing_subscriber::registry()
             .with(call_tree_collector)
             .with(fmt_layer);

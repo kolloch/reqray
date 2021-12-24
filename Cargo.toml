@@ -11,12 +11,13 @@ repository = "https://github.com/kolloch/reqray"
 
 [dependencies]
 tracing = "0.1"
-tracing-subscriber = "0.2"
-quanta = "0.6"
+tracing-subscriber = { version = "0.3", features = ["registry"] }
+quanta = "0.9"
 
 [dev-dependencies]
 criterion = "0.3"
 indoc = "1.0"
+tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
 tracing-futures = { version = "0.2", features = ["tokio", "futures-03", "std-future"]}
 futures = "0.3"
 tokio = { version = "0.3", features = ["full"] }

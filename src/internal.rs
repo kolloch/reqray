@@ -1,5 +1,5 @@
 use std::{collections::HashMap, fmt, thread::ThreadId, time::Duration};
-use tracing::{span::Attributes, Id, Subscriber};
+use tracing::{span::{self}, Id, Subscriber};
 use tracing_subscriber::{
     layer::Context,
     registry::{ExtensionsMut, LookupSpan},
@@ -47,7 +47,6 @@ impl IndexMut<CallPathPoolId> for CallPathPool {
 /// spans are also the same.
 #[derive(Debug, Clone)]
 pub struct CallPathTiming {
-    parent_idx: Option<CallPathPoolId>,
     depth: usize,
     call_count: usize,
     span_meta: &'static Metadata<'static>,
@@ -137,13 +136,12 @@ where
     S: Subscriber + for<'span> LookupSpan<'span> + fmt::Debug,
     H: crate::FinishedCallTreeProcessor + 'static,
 {
-    fn new_span(&self, _attrs: &Attributes, id: &Id, ctx: Context<S>) {
+    fn on_new_span(&self, _attrs: &span::Attributes<'_>, id: &span::Id, ctx: Context<'_, S>) {
         let span = ctx.span(id).expect("no span in new_span");
         match span.parent() {
             None => {
                 // root
                 let pool = vec![CallPathTiming {
-                    parent_idx: None,
                     depth: 0,
                     call_count: 0,
                     span_meta: span.metadata(),
@@ -167,7 +165,7 @@ where
                     .expect("parent has no SpanTimingInfo")
                     .call_path_idx;
                 let root = span
-                    .from_root()
+                    .scope().from_root()
                     .next()
                     .expect("span has a parent but no root");
                 let mut root_extensions: ExtensionsMut = if root.id() == parent.id() {
@@ -194,7 +192,6 @@ where
                             .children
                             .insert(span.metadata().callsite(), new_idx);
                         pool.pool.push(CallPathTiming {
-                            parent_idx: Some(parent_call_path_idx),
                             depth: new_depth,
                             call_count: 0,
                             span_meta: span.metadata(),
@@ -293,7 +290,7 @@ where
             return;
         }
         let timing_info = timing_info.unwrap();
-        let root_extensions_opt = span.from_root().next();
+        let root_extensions_opt = span.scope().from_root().next();
         let mut root_extensions: ExtensionsMut = match root_extensions_opt.as_ref() {
             Some(re) => {
                 // Make sure that we do not hold two extension locks at once.
