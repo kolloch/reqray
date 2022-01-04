@@ -47,8 +47,15 @@ Dec 20 18:48:32.405  INFO Call summary of request@examples/nested.rs:47
 
 ## Setup
 
-Let's assume that you already have an explicit setup for `tracing` like this, then you simply
-need to add the highlighted line:
+For a quick startm, add/edit these `[dependencies]` in `Cargo.toml`:
+
+```
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
+reqray = "0.3"
+```
+
+And add/edit your tracing layer setup:
 
 ```rust
     use reqray::CallTreeCollector;
