@@ -93,6 +93,13 @@ Instead of `CallTreeCollector::default()` you can chose a more explicit config:
         // ...
 ```
 
+## Compatibility with `tracing-subscriber 0.2`
+
+Use reqray 0.2.x for integration with tracing-subscriber 0.2.x. Otherwise, the API
+should be identical.
+
+E.g. `color_eyre` 0.5.x depends on `tracing-error` 0.1.x which requires `tracing-subscriber` 0.2. 
+
 ## Overhead
 
 I did basic performance testing (see benches) to check for obvious gotchas
