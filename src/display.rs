@@ -134,7 +134,7 @@ impl DisplayableCallPathTiming<'_> {
         };
 
         let mut children = node.children().copied().collect::<Vec<_>>();
-        if children.len() > 0 {
+        if !children.is_empty() {
             children.sort();
             let last_dx = children.len() - 1;
             for (idx, child_idx) in children.iter().enumerate() {
@@ -259,7 +259,7 @@ mod test {
         }
     }
 
-    fn display_call_trees(call: impl Fn(Arc<Mock>) -> ()) -> String {
+    fn display_call_trees(call: impl Fn(Arc<Mock>)) -> String {
         use std::fmt::Write;
 
         let call_trees = collect_call_trees(call);

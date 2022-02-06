@@ -477,7 +477,7 @@ pub(crate) mod test {
         println!("{:#?}", call_tree);
     }
 
-    pub fn collect_call_trees(call: impl Fn(Arc<Mock>) -> ()) -> Vec<CallPathPool> {
+    pub fn collect_call_trees(call: impl Fn(Arc<Mock>)) -> Vec<CallPathPool> {
         use tracing_subscriber::prelude::*;
 
         let call_trees = FinishedCallTreeStore::default();
@@ -497,7 +497,7 @@ pub(crate) mod test {
                 call(mock);
             });
         }
-        call_trees.to_vec()
+        call_trees.into_vec()
     }
 
     #[derive(Clone, Default)]
@@ -506,7 +506,7 @@ pub(crate) mod test {
     }
 
     impl FinishedCallTreeStore {
-        pub fn to_vec(self) -> Vec<CallPathPool> {
+        pub fn into_vec(self) -> Vec<CallPathPool> {
             let mut arc = self.store;
             // Really not sure why we have some asynchronous use here.
             let store = loop {
@@ -519,7 +519,6 @@ pub(crate) mod test {
             store
                 .into_inner()
                 .unwrap()
-                .into()
         }
     }
 

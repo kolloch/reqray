@@ -192,7 +192,7 @@ impl CallTreeCollectorBuilder {
         H: FinishedCallTreeProcessor + 'static,
     {
         CallTreeCollector {
-            clock: self.clock.unwrap_or_else(|| Clock::new()),
+            clock: self.clock.unwrap_or_else(Clock::new),
             max_call_depth: core::cmp::max(2, self.max_call_depth),
             processor,
         }
