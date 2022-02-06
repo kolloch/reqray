@@ -1,5 +1,8 @@
 use std::{collections::HashMap, fmt, thread::ThreadId, time::Duration};
-use tracing::{span::{self}, Id, Subscriber};
+use tracing::{
+    span::{self},
+    Id, Subscriber,
+};
 use tracing_subscriber::{
     layer::Context,
     registry::{ExtensionsMut, LookupSpan},
@@ -51,6 +54,7 @@ pub struct CallPathTiming {
     call_count: usize,
     span_meta: &'static Metadata<'static>,
     children: HashMap<callsite::Identifier, CallPathPoolId>,
+    span_life_time: Duration,
     sum_with_children: Duration,
     sum_own: Duration,
 }
@@ -67,6 +71,11 @@ impl CallPathTiming {
     /// Typically, the number of times a function was called.
     pub fn call_count(&self) -> usize {
         self.call_count
+    }
+
+    /// The sum between span new and close events.
+    pub fn span_alive(&self) -> Duration {
+        self.span_life_time
     }
 
     /// The total sum of durations between entering and leaving spans
@@ -95,6 +104,8 @@ impl CallPathTiming {
 #[derive(Debug, Clone)]
 struct SpanTimingInfo {
     call_path_idx: CallPathPoolId,
+    /// The time at which the span was first created.
+    created_at: u64,
     sum_with_children: Duration,
     sum_own: Duration,
     /// Per thread info. We always access SpanTimingInfo in a thread-safe way
@@ -110,9 +121,10 @@ struct PerThreadInfo {
 }
 
 impl SpanTimingInfo {
-    fn for_call_path_idx(call_path_idx: CallPathPoolId) -> SpanTimingInfo {
+    fn for_call_path_idx(call_path_idx: CallPathPoolId, created_at: u64) -> SpanTimingInfo {
         SpanTimingInfo {
             call_path_idx,
+            created_at,
             sum_with_children: Duration::default(),
             sum_own: Duration::default(),
             per_thread: HashMap::new(),
@@ -146,12 +158,17 @@ where
                     call_count: 0,
                     span_meta: span.metadata(),
                     children: HashMap::new(),
+                    span_life_time: Duration::default(),
                     sum_with_children: Duration::default(),
                     sum_own: Duration::default(),
                 }];
                 let mut extensions: ExtensionsMut = span.extensions_mut();
                 extensions.insert(CallPathPool { pool });
-                extensions.insert(SpanTimingInfo::for_call_path_idx(CallPathPoolId(0)));
+                let created_at = self.clock.start();
+                extensions.insert(SpanTimingInfo::for_call_path_idx(
+                    CallPathPoolId(0),
+                    created_at,
+                ));
             }
             Some(parent) => {
                 let mut parent_extensions = parent.extensions_mut();
@@ -165,7 +182,8 @@ where
                     .expect("parent has no SpanTimingInfo")
                     .call_path_idx;
                 let root = span
-                    .scope().from_root()
+                    .scope()
+                    .from_root()
                     .next()
                     .expect("span has a parent but no root");
                 let mut root_extensions: ExtensionsMut = if root.id() == parent.id() {
@@ -196,6 +214,7 @@ where
                             call_count: 0,
                             span_meta: span.metadata(),
                             children: HashMap::new(),
+                            span_life_time: Duration::default(),
                             sum_with_children: Duration::default(),
                             sum_own: Duration::default(),
                         });
@@ -205,7 +224,8 @@ where
                 // Do not keep multiple extensions locked at the same time.
                 std::mem::drop(root_extensions);
                 let mut extensions: ExtensionsMut = span.extensions_mut();
-                extensions.insert(SpanTimingInfo::for_call_path_idx(call_path_idx));
+                let created_at = self.clock.start();
+                extensions.insert(SpanTimingInfo::for_call_path_idx(call_path_idx, created_at));
             }
         };
     }
@@ -218,7 +238,7 @@ where
             // * it has to occur before we check for the parent
             // * taking the "start" clock value below should be one of the last
             //   operations
-            return
+            return;
         }
 
         if let Some(parent) = span.parent() {
@@ -283,6 +303,7 @@ where
     }
 
     fn on_close(&self, id: Id, ctx: Context<S>) {
+        let closed = self.clock.end();
         let span = ctx.span(&id).expect("no span in close");
         let mut extensions = span.extensions_mut();
         let timing_info = extensions.remove::<SpanTimingInfo>();
@@ -305,6 +326,7 @@ where
             .expect("no pool in root Span");
         let call_path_timing: &mut CallPathTiming = &mut pool[timing_info.call_path_idx];
         call_path_timing.call_count += 1;
+        call_path_timing.span_life_time += self.clock.delta(timing_info.created_at, closed);
         call_path_timing.sum_with_children += timing_info.sum_with_children;
         call_path_timing.sum_own += timing_info.sum_own;
 
@@ -516,9 +538,7 @@ pub(crate) mod test {
                 }
             };
 
-            store
-                .into_inner()
-                .unwrap()
+            store.into_inner().unwrap()
         }
     }
 

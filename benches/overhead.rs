@@ -1,4 +1,7 @@
-use std::{fs::File, sync::{Arc, Mutex}};
+use std::{
+    fs::File,
+    sync::{Arc, Mutex},
+};
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use quanta::Mock;
@@ -21,7 +24,7 @@ fn compound_call(mock: &Mock) {
     mock.increment(100);
     one_ns(mock);
     for _ in 0..10 {
-      one_ns(mock);
+        one_ns(mock);
     }
     mock.increment(1000);
 }
@@ -61,8 +64,8 @@ pub fn sync_compound(c: &mut Criterion) {
 
     c.bench_function("log with silent call tree collector", |b| {
         let counting = CountingCallTreeProcessor::default();
-        let call_tree_collector = CallTreeCollectorBuilder::default()
-          .build_with_collector(counting.clone());
+        let call_tree_collector =
+            CallTreeCollectorBuilder::default().build_with_collector(counting.clone());
         let f = File::create("benches_with_silent_calltree.txt").unwrap();
         let fmt_layer = fmt::layer()
             .with_thread_ids(true)
@@ -77,11 +80,11 @@ pub fn sync_compound(c: &mut Criterion) {
         });
         assert!(*counting.root_child_count.lock().unwrap() > 0);
     });
-  }
+}
 
 #[derive(Default, Clone)]
 struct CountingCallTreeProcessor {
-  root_child_count: Arc<Mutex<usize>>,
+    root_child_count: Arc<Mutex<usize>>,
 }
 
 impl FinishedCallTreeProcessor for CountingCallTreeProcessor {

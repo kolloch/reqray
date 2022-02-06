@@ -18,6 +18,40 @@ This makes answers to these question often trivial to answer:
 It looks like this:
 
 ```
+2022-02-06T20:01:57.103747Z  INFO Call summary of request@examples/nested.rs:51
+
+                        # calls │   ∑ alive ms │    ∑ busy ms │ ∑ own busy ms │ span tree
+                    ────────────┼──────────────┼──────────────┼────────────-──┼───────────────────────
+                          0 001 ┊      258.910 ┊      258.890 ┊         0.106 ┊ ┬ request
+                          0 001 ┊       87.204 ┊       87.190 ┊        19.299 ┊ ├┬ nested
+                          0 001 ┊        0.036 ┊        0.021 ┊         0.021 ┊ ┊├─ random
+                          1 000 ┊       75.738 ┊       61.912 ┊        61.912 ┊ ┊╰─ repeated
+                          0 002 ┊        0.051 ┊        0.027 ┊         0.027 ┊ ├─ repeated
+                          0 001 ┊        1.644 ┊        1.632 ┊         0.019 ┊ ├┬ nest_deeply
+                          0 001 ┊        1.619 ┊        1.607 ┊         0.025 ┊ ┊╰┬ nest_deeply
+                          0 001 ┊        1.593 ┊        1.577 ┊         0.024 ┊ ┊ ╰┬ nest_deeply
+                          0 001 ┊        1.561 ┊        1.547 ┊         0.022 ┊ ┊  ╰┬ nest_deeply
+                          0 001 ┊        1.532 ┊        1.520 ┊         0.023 ┊ ┊   ╰┬ nest_deeply
+                          0 001 ┊        1.504 ┊        1.492 ┊         0.023 ┊ ┊    ╰┬ nest_deeply
+                          0 001 ┊        1.476 ┊        1.463 ┊         0.025 ┊ ┊     ╰┬ nest_deeply
+                          0 001 ┊        1.446 ┊        1.433 ┊         0.025 ┊ ┊      ╰┬ nest_deeply
+                          0 001 ┊        1.415 ┊        1.402 ┊         1.402 ┊ ┊       ╰─ nest_deeply
+                          0 001 ┊      169.915 ┊      169.905 ┊        17.883 ┊ ╰┬ nested2
+                          0 001 ┊        0.010 ┊        0.001 ┊         0.001 ┊  ├─ random
+                          1 000 ┊       88.793 ┊       76.081 ┊        76.081 ┊  ├─ repeated
+                          0 001 ┊       70.386 ┊       70.377 ┊        19.332 ┊  ╰┬ nested
+                          0 001 ┊        0.011 ┊        0.001 ┊         0.001 ┊   ├─ random
+                          1 000 ┊       58.468 ┊       45.280 ┊        45.280 ┊   ╰─ repeated
+```
+
+* **calls**: The total number of spans created at this call path.
+* **∑ alive ms**: The total time spans at this call path were alive i.e. sum of times between new and close events.
+* **∑ busy ms**: The total time spans at this call path were entered i.e. sum of times between enter and leave events.
+* **∑ own busy ms**: The total time spans at this call path were entered without any children entered.
+
+It looked like this until 0.3.x:
+
+```
 Dec 20 18:48:32.405  INFO Call summary of request@examples/nested.rs:47
 
                         # calls │    ∑ wall ms │     ∑ own ms │ span tree

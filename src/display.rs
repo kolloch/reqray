@@ -70,13 +70,13 @@ impl<'a> fmt::Display for DisplayableCallPathTiming<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{:indent$}    # calls │    ∑ wall ms │     ∑ own ms │ span tree",
+            "{:indent$}    # calls │   ∑ alive ms │    ∑ busy ms │ ∑ own busy ms │ span tree",
             "",
             indent = self.left_margin
         )?;
         writeln!(
             f,
-            "{:indent$}────────────┼──────────────┼──────────────┼───────────────────────",
+            "{:indent$}────────────┼──────────────┼──────────────┼────────────-──┼───────────────────────",
             "",
             indent = self.left_margin
         )?;
@@ -96,10 +96,12 @@ impl DisplayableCallPathTiming<'_> {
     ) -> fmt::Result {
         write!(
             f,
-            "{:indent$}{: >7} {:0>3} ┊ {: >8}.{:0>3} ┊ {: >8}.{:0>3} ┊ ",
+            "{:indent$}{: >7} {:0>3} ┊ {: >8}.{:0>3} ┊ {: >8}.{:0>3} ┊  {: >8}.{:0>3} ┊ ",
             "",
             node.call_count() / 1000,
             node.call_count() % 1000,
+            node.span_alive().as_micros() / 1000,
+            node.span_alive().as_micros() % 1000,
             node.sum_with_children().as_micros() / 1000,
             node.sum_with_children().as_micros() % 1000,
             node.sum_without_children().as_micros() / 1000,
@@ -162,9 +164,9 @@ mod test {
         assert_eq!(
             &str,
             indoc::indoc! {r#"
-                # calls │    ∑ wall ms │     ∑ own ms │ span tree
-            ────────────┼──────────────┼──────────────┼───────────────────────
-                  0 001 ┊        0.000 ┊        0.000 ┊ ─ one_ns
+                    # calls │   ∑ alive ms │    ∑ busy ms │ ∑ own busy ms │ span tree
+                ────────────┼──────────────┼──────────────┼────────────-──┼───────────────────────
+                      0 001 ┊        0.000 ┊        0.000 ┊         0.000 ┊ ─ one_ns
 
             "#},
             "got:\n{}",
@@ -178,11 +180,11 @@ mod test {
         assert_eq!(
             &str,
             indoc::indoc! {r#"
-                # calls │    ∑ wall ms │     ∑ own ms │ span tree
-            ────────────┼──────────────┼──────────────┼───────────────────────
-                  0 001 ┊        0.001 ┊        0.001 ┊ ┬ compound_call
-                  0 003 ┊        0.000 ┊        0.000 ┊ ╰─ one_ns
-
+                # calls │   ∑ alive ms │    ∑ busy ms │ ∑ own busy ms │ span tree
+            ────────────┼──────────────┼──────────────┼────────────-──┼───────────────────────
+                  0 001 ┊        0.001 ┊        0.001 ┊         0.001 ┊ ┬ compound_call
+                  0 003 ┊        0.000 ┊        0.000 ┊         0.000 ┊ ╰─ one_ns
+      
             "#},
             "got:\n{}",
             str
@@ -206,19 +208,19 @@ mod test {
         assert_eq!(
             &str,
             indoc::indoc! {r#"
-                    # calls │    ∑ wall ms │     ∑ own ms │ span tree
-                ────────────┼──────────────┼──────────────┼───────────────────────
-                      0 001 ┊       11.011 ┊        1.001 ┊ ┬ nest_deeply
-                      0 001 ┊       10.010 ┊        1.001 ┊ ╰┬ nest_deeply
-                      0 001 ┊        9.009 ┊        1.001 ┊  ╰┬ nest_deeply
-                      0 001 ┊        8.008 ┊        1.001 ┊   ╰┬ nest_deeply
-                      0 001 ┊        7.007 ┊        1.001 ┊    ╰┬ nest_deeply
-                      0 001 ┊        6.006 ┊        1.001 ┊     ╰┬ nest_deeply
-                      0 001 ┊        5.005 ┊        1.001 ┊      ╰┬ nest_deeply
-                      0 001 ┊        4.004 ┊        1.001 ┊       ╰┬ nest_deeply
-                      0 001 ┊        3.003 ┊        1.001 ┊        ╰┬ nest_deeply
-                      0 001 ┊        2.002 ┊        2.002 ┊         ╰─ nest_deeply
-
+                # calls │   ∑ alive ms │    ∑ busy ms │ ∑ own busy ms │ span tree
+            ────────────┼──────────────┼──────────────┼────────────-──┼───────────────────────
+                  0 001 ┊       11.011 ┊       11.011 ┊         1.001 ┊ ┬ nest_deeply
+                  0 001 ┊       10.010 ┊       10.010 ┊         1.001 ┊ ╰┬ nest_deeply
+                  0 001 ┊        9.009 ┊        9.009 ┊         1.001 ┊  ╰┬ nest_deeply
+                  0 001 ┊        8.008 ┊        8.008 ┊         1.001 ┊   ╰┬ nest_deeply
+                  0 001 ┊        7.007 ┊        7.007 ┊         1.001 ┊    ╰┬ nest_deeply
+                  0 001 ┊        6.006 ┊        6.006 ┊         1.001 ┊     ╰┬ nest_deeply
+                  0 001 ┊        5.005 ┊        5.005 ┊         1.001 ┊      ╰┬ nest_deeply
+                  0 001 ┊        4.004 ┊        4.004 ┊         1.001 ┊       ╰┬ nest_deeply
+                  0 001 ┊        3.003 ┊        3.003 ┊         1.001 ┊        ╰┬ nest_deeply
+                  0 001 ┊        2.002 ┊        2.002 ┊         2.002 ┊         ╰─ nest_deeply
+            
             "#},
             "got:\n{}",
             str
@@ -238,11 +240,11 @@ mod test {
         // The clock increments from other threads can leak over, unfortunately.
         // Therefore, we use XXXs for the non-deterministic values.
         let pattern = indoc::indoc! {r#"
-                # calls │    ∑ wall ms │     ∑ own ms │ span tree
-            ────────────┼──────────────┼──────────────┼───────────────────────
-                  0 001 ┊      101.XXX ┊      101.XXX ┊ ┬ cooking_party
-                  0 001 ┊        0.03X ┊        0.03X ┊ ├─ cook_three
-                  0 001 ┊        0.0X3 ┊        0.0X3 ┊ ╰─ eat_three
+                # calls │   ∑ alive ms │    ∑ busy ms │ ∑ own busy ms │ span tree
+            ────────────┼──────────────┼──────────────┼────────────-──┼───────────────────────
+                  0 001 ┊      101.XXX ┊      101.XXX ┊       101.XXX ┊ ┬ cooking_party
+                  0 001 ┊        0.03X ┊        0.03X ┊         0.03X ┊ ├─ cook_three
+                  0 001 ┊        0.0X3 ┊        0.0X3 ┊         0.0X3 ┊ ╰─ eat_three
 
         "#};
 
@@ -250,13 +252,29 @@ mod test {
     }
 
     fn pattern_matches(pattern: &str, actual: &str) {
-        assert_eq!(pattern.len(), actual.len(), "unexpected length:\n{}", actual);
+        assert_eq!(
+            pattern.len(),
+            actual.len(),
+            "unexpected length:\n{}",
+            actual
+        );
 
-        for (p,a) in pattern.chars().zip(actual.chars()) {
+        let mut all_matches = true;
+        let mut matches = String::new();
+        for (p, a) in pattern.chars().zip(actual.chars()) {
             if p != 'X' && p != a {
-                assert_eq!(actual, pattern);
+                all_matches = false;
+                matches += "!";
+            } else {
+                matches.push(p);
             }
         }
+
+        assert!(
+            all_matches,
+            "positions at ! didn't match:\n{}\n{}\n",
+            matches, actual
+        );
     }
 
     fn display_call_trees(call: impl Fn(Arc<Mock>)) -> String {
