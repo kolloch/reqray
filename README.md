@@ -86,7 +86,7 @@ For a quick startm, add/edit these `[dependencies]` in `Cargo.toml`:
 ```
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
-reqray = "0.3"
+reqray = "0.4"
 ```
 
 And add/edit your tracing layer setup:
