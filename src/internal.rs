@@ -249,7 +249,7 @@ where
                     let delta = self.clock.delta(last_enter_own, leave_parent);
                     timing_info.sum_own += delta;
                 }
-            }            }
+            }
         }
 
         let mut extensions = span.extensions_mut();
