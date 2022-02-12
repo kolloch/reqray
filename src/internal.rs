@@ -244,11 +244,12 @@ where
         if let Some(parent) = span.parent() {
             let mut extensions = parent.extensions_mut();
             if let Some(timing_info) = extensions.get_mut::<SpanTimingInfo>() {
-                let last_enter_own =
-                    timing_info.per_thread[&std::thread::current().id()].last_enter_own;
-                let delta = self.clock.delta(last_enter_own, leave_parent);
-                timing_info.sum_own += delta;
-            }
+                if let Some(thread_info) = timing_info.per_thread.get(&std::thread::current().id()) {
+                    let last_enter_own = thread_info.last_enter_own;
+                    let delta = self.clock.delta(last_enter_own, leave_parent);
+                    timing_info.sum_own += delta;
+                }
+            }            }
         }
 
         let mut extensions = span.extensions_mut();
