@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt, thread::ThreadId, time::Duration};
 use tracing::{
     span::{self},
-    Id, Subscriber,
+    Id, Subscriber, warn,
 };
 use tracing_subscriber::{
     layer::Context,
@@ -274,16 +274,25 @@ where
             return;
         }
         let timing_info = timing_info.unwrap();
-        let per_thread = &timing_info.per_thread[&std::thread::current().id()];
-        let wall_duration = self.clock.delta(per_thread.last_enter, end);
-        timing_info.sum_with_children += wall_duration;
-        let own_duration = self.clock.delta(per_thread.last_enter_own, end);
-        timing_info.sum_own += own_duration;
 
-        // It is likely that we will be entered by the same thread again,
-        // but we do not want to bloat memory if we are constantly entered
-        // in different threads.
-        timing_info.per_thread.remove(&std::thread::current().id());
+        if let Some(per_thread) = &timing_info.per_thread.get(&std::thread::current().id()) {
+            let wall_duration = self.clock.delta(per_thread.last_enter, end);
+            timing_info.sum_with_children += wall_duration;
+            let own_duration = self.clock.delta(per_thread.last_enter_own, end);
+            timing_info.sum_own += own_duration;
+    
+            // It is likely that we will be entered by the same thread again,
+            // but we do not want to bloat memory if we are constantly entered
+            // in different threads.
+            timing_info.per_thread.remove(&std::thread::current().id());    
+        } else {
+            // In on_enter we ensure that the per thread info exists -- so I don't exactly understand
+            // when this can happen.
+            warn!("Missing thread info for current thread on exit. \n\
+                   Cannot account own time correctly. \n\
+                   If you use .in_current_span() or .or_current(), a span might be entered and exited multiple times.\n\
+                   Future versions of reqray might support this properly. Sorry for the inconvenience.\n");
+        }
 
         // Make sure that we do not hold two extension locks at once.
         std::mem::drop(extensions);
