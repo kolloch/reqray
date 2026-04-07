@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt, thread::ThreadId, time::Duration};
 use tracing::{
     span::{self},
-    Id, Subscriber, warn,
+    warn, Id, Subscriber,
 };
 use tracing_subscriber::{
     layer::Context,
@@ -244,7 +244,8 @@ where
         if let Some(parent) = span.parent() {
             let mut extensions = parent.extensions_mut();
             if let Some(timing_info) = extensions.get_mut::<SpanTimingInfo>() {
-                if let Some(thread_info) = timing_info.per_thread.get(&std::thread::current().id()) {
+                if let Some(thread_info) = timing_info.per_thread.get(&std::thread::current().id())
+                {
                     let last_enter_own = thread_info.last_enter_own;
                     let delta = self.clock.delta(last_enter_own, leave_parent);
                     timing_info.sum_own += delta;
@@ -254,7 +255,7 @@ where
 
         let mut extensions = span.extensions_mut();
         if let Some(timing_info) = extensions.get_mut::<SpanTimingInfo>() {
-            let mut per_thread = timing_info
+            let per_thread = timing_info
                 .per_thread
                 .entry(std::thread::current().id())
                 .or_default();
@@ -280,11 +281,11 @@ where
             timing_info.sum_with_children += wall_duration;
             let own_duration = self.clock.delta(per_thread.last_enter_own, end);
             timing_info.sum_own += own_duration;
-    
+
             // It is likely that we will be entered by the same thread again,
             // but we do not want to bloat memory if we are constantly entered
             // in different threads.
-            timing_info.per_thread.remove(&std::thread::current().id());    
+            timing_info.per_thread.remove(&std::thread::current().id());
         } else {
             // In on_enter we ensure that the per thread info exists -- so I don't exactly understand
             // when this can happen.
