@@ -197,9 +197,30 @@ impl CallTreeCollectorBuilder {
         H: FinishedCallTreeProcessor + 'static,
     {
         CallTreeCollector {
-            clock: self.clock.unwrap_or_else(Clock::new),
+            clock: self.clock.unwrap_or_default(),
             max_call_depth: core::cmp::max(2, self.max_call_depth),
             processor,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[derive(Default)]
+    struct NoopProcessor;
+
+    impl FinishedCallTreeProcessor for NoopProcessor {
+        fn process_finished_call(&self, _pool: CallPathPool) {}
+    }
+
+    #[test]
+    fn collector_enforces_minimum_depth() {
+        let collector = CallTreeCollectorBuilder::default()
+            .max_call_depth(0)
+            .build_with_collector(NoopProcessor);
+
+        assert_eq!(collector.max_call_depth, 2);
     }
 }
