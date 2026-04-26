@@ -164,7 +164,7 @@ where
                 }];
                 let mut extensions: ExtensionsMut = span.extensions_mut();
                 extensions.insert(CallPathPool { pool });
-                let created_at = self.clock.start();
+                let created_at = self.clock.raw();
                 extensions.insert(SpanTimingInfo::for_call_path_idx(
                     CallPathPoolId(0),
                     created_at,
@@ -224,14 +224,14 @@ where
                 // Do not keep multiple extensions locked at the same time.
                 std::mem::drop(root_extensions);
                 let mut extensions: ExtensionsMut = span.extensions_mut();
-                let created_at = self.clock.start();
+                let created_at = self.clock.raw();
                 extensions.insert(SpanTimingInfo::for_call_path_idx(call_path_idx, created_at));
             }
         };
     }
 
     fn on_enter(&self, _id: &tracing::Id, ctx: Context<S>) {
-        let leave_parent = self.clock.end();
+        let leave_parent = self.clock.raw();
         let span = ctx.lookup_current().expect("no span in new_span");
         if span.extensions().get::<SpanTimingInfo>().is_none() {
             // yes, this is an extra check but:
@@ -259,14 +259,14 @@ where
                 .per_thread
                 .entry(std::thread::current().id())
                 .or_default();
-            let start = self.clock.start();
+            let start = self.clock.raw();
             per_thread.last_enter = start;
             per_thread.last_enter_own = start;
         }
     }
 
     fn on_exit(&self, id: &tracing::Id, ctx: Context<'_, S>) {
-        let end = self.clock.end();
+        let end = self.clock.raw();
         let span = ctx.span(id).unwrap();
 
         let mut extensions = span.extensions_mut();
@@ -303,7 +303,7 @@ where
             let timing_info = extensions
                 .get_mut::<SpanTimingInfo>()
                 .expect("parent has no SpanTimingInfo");
-            let enter_own = self.clock.start();
+            let enter_own = self.clock.raw();
             timing_info
                 .per_thread
                 .entry(std::thread::current().id())
@@ -314,7 +314,7 @@ where
     }
 
     fn on_close(&self, id: Id, ctx: Context<S>) {
-        let closed = self.clock.end();
+        let closed = self.clock.raw();
         let span = ctx.span(&id).expect("no span in close");
         let mut extensions = span.extensions_mut();
         let timing_info = extensions.remove::<SpanTimingInfo>();

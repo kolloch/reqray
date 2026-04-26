@@ -12,7 +12,7 @@ repository = "https://github.com/kolloch/reqray"
 [dependencies]
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["registry"] }
-quanta = "0.9"
+quanta = "0.12.6"
 
 [dev-dependencies]
 criterion = "0.3"
