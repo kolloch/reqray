@@ -1,6 +1,6 @@
 # Reqray
 
-[![Build Status](https://api.travis-ci.com/kolloch/reqray.svg?branch=main&status=started)](https://travis-ci.com/kolloch/reqray)
+[![CI](https://github.com/kolloch/reqray/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kolloch/reqray/actions/workflows/ci.yml)
 [![Crate](https://img.shields.io/crates/v/reqray.svg)](https://crates.io/crates/reqray)
 [![Docs](https://docs.rs/reqray/badge.svg)](https://docs.rs/reqray)
 

@@ -1,0 +1,24 @@
+# cargo-deny policy: `cargo deny check`.
+
+[licenses]
+# Permissive licenses only, so that reqray's users take on no copyleft.
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "MIT",
+  "Unicode-3.0",
+  "Zlib",
+]
+# The list is a policy, not an inventory.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
