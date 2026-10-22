@@ -1,9 +1,10 @@
 use std::{
     fs::File,
+    hint::black_box,
     sync::{Arc, Mutex},
 };
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use quanta::Mock;
 use reqray::{CallTreeCollector, CallTreeCollectorBuilder, FinishedCallTreeProcessor};
 
@@ -29,10 +30,10 @@ fn compound_call(mock: &Mock) {
     mock.increment(1000);
 }
 
-pub fn sync_compound(c: &mut Criterion) {
+fn sync_compound(c: &mut Criterion) {
     let (_clock, mock) = quanta::Clock::mock();
     c.bench_function("without subscriber", |b| {
-        b.iter(|| compound_call(black_box(&mock)))
+        b.iter(|| compound_call(black_box(&mock)));
     });
     c.bench_function("log with layers", |b| {
         let f = File::create("benches_without_calltree.txt").unwrap();
@@ -43,7 +44,7 @@ pub fn sync_compound(c: &mut Criterion) {
             .with_writer(f);
         let subscriber = tracing_subscriber::registry().with(fmt_layer);
         tracing::subscriber::with_default(subscriber, || {
-            b.iter(|| compound_call(black_box(&mock)))
+            b.iter(|| compound_call(black_box(&mock)));
         });
     });
     c.bench_function("log with call tree collector", |b| {
@@ -58,7 +59,7 @@ pub fn sync_compound(c: &mut Criterion) {
             .with(call_tree_collector)
             .with(fmt_layer);
         tracing::subscriber::with_default(subscriber, || {
-            b.iter(|| compound_call(black_box(&mock)))
+            b.iter(|| compound_call(black_box(&mock)));
         });
     });
 
@@ -76,7 +77,7 @@ pub fn sync_compound(c: &mut Criterion) {
             .with(call_tree_collector)
             .with(fmt_layer);
         tracing::subscriber::with_default(subscriber, || {
-            b.iter(|| compound_call(black_box(&mock)))
+            b.iter(|| compound_call(black_box(&mock)));
         });
         assert!(*counting.root_child_count.lock().unwrap() > 0);
     });

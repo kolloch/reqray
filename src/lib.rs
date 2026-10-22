@@ -30,18 +30,30 @@
 //!                           1 000 ┊       58.468 ┊       45.280 ┊        45.280 ┊   ╰─ repeated
 //! ```
 //!
-//! * **calls**: The total number of spans created at this call path.
-//! * **∑ alive ms**: The total time spans at this call path were alive i.e. sum of times between new and close events.
-//! * **∑ busy ms**: The total time spans at this call path were entered i.e. sum of times between enter and leave events.
-//! * **∑ own busy ms**: The total time spans at this call path were entered without any children entered.
+//! * **calls**: The total number of spans closed at this call path.
+//! * **∑ alive ms**: The total time spans at this call path were alive i.e.
+//!   sum of times between new and close events.
+//! * **∑ busy ms**: The total time spans at this call path were entered i.e.
+//!   sum of times between enter and exit events. A span entered on several
+//!   threads at once is busy on each of them; a span entered again on a
+//!   thread where it is entered already (e.g. a future instrumented with the
+//!   current span) counts once.
+//! * **∑ own busy ms**: The total time spans at this call path were the
+//!   innermost entered span of a thread: busy time minus the time another
+//!   span was entered on top of them. On one thread, the own times of a
+//!   call tree add up to the busy time of its root, unless a span of
+//!   another tree was entered on top of one of its spans.
 //!
+//! Spans beyond the maximum call depth are not recorded: they do not count
+//! as entered, so their time goes to the recorded span entered last on the
+//! thread, as if their code were inlined into it.
 //!
-//! Under the hood, `reqray` provides a [CallTreeCollector] tracing `Layer`
+//! Under the hood, `reqray` provides a [`CallTreeCollector`] tracing `Layer`
 //! which, unsurprisingly, collects call trees. Once the root span (e.g. the top
 //! most span = the top most instrumented call) has been closed, the finished
-//! call tree is handed over to a [FinishedCallTreeProcessor].
-//! [LoggingCallTreeCollector] implements [FinishedCallTreeProcessor] and logs
-//! each call tree in human-friendly way as shown above.
+//! call tree is handed over to a [`FinishedCallTreeProcessor`].
+//! [`LoggingCallTreeCollector`] implements [`FinishedCallTreeProcessor`] and
+//! logs each call tree in human-friendly way as shown above.
 //!
 //! Let's assume that you already have an explicit setup for `tracing` like
 //! this, then you simply need to add the highlighted line:
@@ -66,8 +78,8 @@
 //! ```
 //!
 //! Instead of `CallTreeCollector::default()` you can chose a more explicit
-//! config using [CallTreeCollectorBuilder] and
-//! [LoggingCallTreeCollectorBuilder].
+//! config using [`CallTreeCollectorBuilder`] and
+//! [`LoggingCallTreeCollectorBuilder`].
 //!
 //! ```
 //! use reqray::{CallTreeCollectorBuilder, display::LoggingCallTreeCollectorBuilder};
@@ -97,6 +109,8 @@
 pub mod display;
 mod internal;
 
+use std::fmt;
+
 use display::{LoggingCallTreeCollector, LoggingCallTreeCollectorBuilder};
 use quanta::Clock;
 
@@ -104,20 +118,31 @@ use quanta::Clock;
 // display model to use the public interface.
 pub use internal::{CallPathPool, CallPathPoolId, CallPathTiming};
 
-/// A [tracing::Subscriber] which collects call trees and hands finished trees
-/// to a [FinishedCallTreeProcessor].
+/// A [`tracing_subscriber::Layer`] which collects call trees and hands
+/// finished trees to a [`FinishedCallTreeProcessor`].
 ///
-/// Use [CallTreeCollector::default()] if you want to log all call trees with
+/// Use [`CallTreeCollector::default()`] if you want to log all call trees with
 /// the standard configuration.
 ///
-/// Use [CallTreeCollectorBuilder] together with e.g.
-/// [LoggingCallTreeCollectorBuilder] to customize your setup.
+/// Use [`CallTreeCollectorBuilder`] together with e.g.
+/// [`LoggingCallTreeCollectorBuilder`] to customize your setup.
 pub struct CallTreeCollector<H: FinishedCallTreeProcessor + 'static> {
     /// The clock to use for determing call timings.
     clock: Clock,
     /// Ignore calls beyond this depth.
     max_call_depth: usize,
     processor: H,
+    /// Every thread's stack of entered spans.
+    entered: internal::EnteredStacks,
+}
+
+impl<H: FinishedCallTreeProcessor + 'static> fmt::Debug for CallTreeCollector<H> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CallTreeCollector")
+            .field("clock", &self.clock)
+            .field("max_call_depth", &self.max_call_depth)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for CallTreeCollector<LoggingCallTreeCollector> {
@@ -127,20 +152,27 @@ impl Default for CallTreeCollector<LoggingCallTreeCollector> {
     }
 }
 
-/// A [FinishedCallTreeProcessor] uses the aggregated call tree for
+/// A [`FinishedCallTreeProcessor`] uses the aggregated call tree for
 /// something useful.
 ///
 /// Expected use cases:
 ///
 /// * Log the call tree
 /// * Generate metrics from the call tree
-/// * Do anamoly detection on the call tree
-/// * Send the call tree elswhere for further aggregation
-pub trait FinishedCallTreeProcessor {
+/// * Do anomaly detection on the call tree
+/// * Send the call tree elsewhere for further aggregation
+///
+/// It is called from within the `tracing` subscriber, when the root span
+/// of the tree closes, on the thread that closed it. It may emit `tracing`
+/// events, as [`LoggingCallTreeCollector`] does, but it must not create
+/// spans: a span closed while another span is closing is never freed by
+/// `tracing_subscriber`'s registry, and the tree it belongs to would never
+/// be reported.
+pub trait FinishedCallTreeProcessor: Send + Sync {
     fn process_finished_call(&self, pool: CallPathPool);
 }
 
-/// Configure & Build [CallTreeCollector]s.
+/// Configure & Build [`CallTreeCollector`]s.
 ///
 /// Example:
 ///
@@ -156,6 +188,7 @@ pub trait FinishedCallTreeProcessor {
 ///                  .build()
 ///         );
 /// ```
+#[derive(Debug)]
 pub struct CallTreeCollectorBuilder {
     clock: Option<Clock>,
     max_call_depth: usize,
@@ -175,23 +208,25 @@ impl CallTreeCollectorBuilder {
     ///
     /// The default is to use a real clock, but you can pass
     /// in a mock clock for testing.
+    #[must_use]
     pub fn clock(mut self, clock: Clock) -> Self {
         self.clock = Some(clock);
         self
     }
 
     /// The maximum call depth of the call tree to record -- must be
-    /// at least `2`.
+    /// at least `2`, which records the root span and its direct children.
     ///
-    /// Call paths below this depth are capped -- so their execution
-    /// is recorded as if they were inlined.
+    /// Call paths below this depth are not recorded -- so their execution
+    /// is recorded as if they were inlined into the deepest recorded span.
+    #[must_use]
     pub fn max_call_depth(mut self, max_call_depth: usize) -> Self {
         self.max_call_depth = max_call_depth;
         self
     }
 
-    /// Build the [CallTreeCollector] handing over the finished call trees
-    /// to `collector`.
+    /// Build the [`CallTreeCollector`] handing over the finished call trees
+    /// to `processor`.
     pub fn build_with_collector<H>(self, processor: H) -> CallTreeCollector<H>
     where
         H: FinishedCallTreeProcessor + 'static,
@@ -200,6 +235,7 @@ impl CallTreeCollectorBuilder {
             clock: self.clock.unwrap_or_default(),
             max_call_depth: core::cmp::max(2, self.max_call_depth),
             processor,
+            entered: internal::EnteredStacks::new(),
         }
     }
 }
@@ -222,5 +258,12 @@ mod test {
             .build_with_collector(NoopProcessor);
 
         assert_eq!(collector.max_call_depth, 2);
+    }
+
+    /// A layer must be usable from every thread of a subscriber.
+    #[test]
+    fn collector_is_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>(_: &T) {}
+        assert_send_sync(&CallTreeCollector::default());
     }
 }
