@@ -482,7 +482,7 @@ pub(crate) mod test {
         info!("CP increment 1_000_000");
         mock.increment(1_000_000);
 
-        let handle = async_std::task::spawn({
+        let handle = tokio::spawn({
             let mock = mock.clone();
             async {
                 eat_three(mock, receiver).await;
@@ -492,7 +492,7 @@ pub(crate) mod test {
         });
         cook_three(mock.clone(), sender).await;
 
-        handle.await;
+        handle.await.unwrap();
         info!("CP increment 100_000_000");
         mock.increment(100_000_000);
     }
@@ -500,9 +500,7 @@ pub(crate) mod test {
     #[test]
     fn test_with_futures() {
         let call_tree = collect_call_trees(|mock| {
-            // let rt = tokio::runtime::Runtime::new().unwrap();
-            // rt.block_on(async {
-            async_std::task::block_on(async {
+            tokio::runtime::Runtime::new().unwrap().block_on(async {
                 cooking_party(mock).await;
             });
         });

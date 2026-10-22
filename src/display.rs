@@ -230,9 +230,7 @@ mod test {
     #[test]
     fn display_with_futures() {
         let str = display_call_trees(|mock| {
-            // let rt = tokio::runtime::Runtime::new().unwrap();
-            // rt.block_on(async {
-            async_std::task::block_on(async {
+            tokio::runtime::Runtime::new().unwrap().block_on(async {
                 cooking_party(mock).await;
             });
         });
